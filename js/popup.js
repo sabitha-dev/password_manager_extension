@@ -79,9 +79,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-copy-username").addEventListener("click", () => {
     copyToClipboard(document.getElementById("detail-username").textContent, "btn-copy-username");
   });
-  document.getElementById("btn-copy-email").addEventListener("click", () => {
-    copyToClipboard(document.getElementById("detail-email").textContent, "btn-copy-email");
-  });
+ document.getElementById("btn-copy-email").addEventListener("click", () => {
+  copyToClipboard(document.getElementById("detail-appname").textContent, "btn-copy-email");
+});
   document.getElementById("btn-copy-password").addEventListener("click", () => {
     copyToClipboard(document.getElementById("detail-password-val").dataset.raw, "btn-copy-password");
   });
@@ -129,41 +129,71 @@ function showAddForm() {
 
 function showDetail(entry) {
   selectedEntry = entry;
+
   document.getElementById("detail-site").textContent = entry.appName || "—";
+
   document.getElementById("detail-url").textContent = entry.siteUrl || "—";
-  document.getElementById("detail-url").href = entry.siteUrl || "#";
-document.getElementById("detail-username").textContent = entry.loginUsername || "—";
-  document.getElementById("detail-email").textContent = entry.email || "—";
+  document.getElementById("detail-url").href = entry.siteUrl || "—";
+
+  document.getElementById("detail-appname").textContent = entry.appName || "—";
+  document.getElementById("detail-username").textContent = entry.loginUsername || "—";
   document.getElementById("detail-notes").textContent = entry.notes || "—";
 
   const pwEl = document.getElementById("detail-password-val");
   pwEl.textContent = "••••••••";
-pwEl.dataset.raw = entry.encryptedPassword || "";
+  pwEl.dataset.raw = entry.encryptedPassword || "";
   pwEl.dataset.visible = "false";
+  document.getElementById("btn-reveal-password").onclick = async () => {
+  const visible = pwEl.dataset.visible === "true";
 
-  document.getElementById("btn-reveal-password").textContent = "👁 Reveal";
-  document.getElementById("btn-reveal-password").onclick = () => {
-    const visible = pwEl.dataset.visible === "true";
-    pwEl.textContent = visible ? "••••••••" : entry.password;
-    pwEl.dataset.visible = visible ? "false" : "true";
-    document.getElementById("btn-reveal-password").textContent = visible ? "👁 Reveal" : "🙈 Hide";
-  };
+  // if already visible -> hide
+  if (visible) {
+    pwEl.textContent = "••••••••";
+    pwEl.dataset.visible = "false";
+    document.getElementById("btn-reveal-password").textContent = "👁 Reveal";
+    return;
+  }
+
+  // else fetch decrypted password from backend
+  try {
+    const res = await Passwords.getById(entry.id);
+    const fullEntry = res.data.data; 
+    pwEl.textContent = fullEntry.password;
+    pwEl.dataset.visible = "true";
+    document.getElementById("btn-reveal-password").textContent = "🙈 Hide";
+
+    // update selectedEntry so autofill also works
+    selectedEntry.password = fullEntry.password;
+  } catch (err) {
+    showToast("Failed to reveal password", true);
+  }
+};
 
   showView("view-detail");
 }
 
-function showEditForm(entry) {
-  document.getElementById("edit-site-name").value = entry.siteName || "";
-  document.getElementById("edit-site-url").value = entry.siteUrl || "";
-  document.getElementById("edit-username").value = entry.username || "";
-  document.getElementById("edit-email").value = entry.email || "";
-  document.getElementById("edit-password").value = entry.password || "";
-  document.getElementById("edit-notes").value = entry.notes || "";
-  document.getElementById("edit-password").type = "password";
-  clearErrors("edit-error");
-  showView("view-edit");
-}
+ 
+async function showEditForm(entry) {
+  try {
+    console.log(entry);
+    
+    const res = await Passwords.getById(entry.id);
+    const fullEntry = res.data.data;
 
+    document.getElementById("edit-site-name").value = fullEntry.appName || "-";
+    document.getElementById("edit-site-url").value = fullEntry.siteUrl || "-";
+    document.getElementById("edit-username").value = fullEntry.loginUsername || "-";
+    document.getElementById("edit-password").value = fullEntry.password || "-";
+    document.getElementById("edit-notes").value = fullEntry.notes || "-";
+
+    document.getElementById("edit-password").type = "password";
+    clearErrors("edit-error");
+    showView("view-edit");
+
+  } catch (err) {
+    showToast("Failed to load password for editing", true);
+  }
+}
 /* ─────────────────────────────────────────────
    AUTH HANDLERS
 ───────────────────────────────────────────── */
@@ -181,7 +211,7 @@ async function handleLogin(e) {
     const res = await Auth.login(email, password);
 
     const message = res?.data?.message 
-    const token = res?.data?.data 
+    const token = res?.data?.data     
     const user = res?.data?.user 
 
     if (!token) {
@@ -222,12 +252,16 @@ async function handleRegister(e) {
   try {
    const res= await Auth.register(username, email, password);
    console.log(res,"Res");
-   
+   if (res?.data?.message !== "User registered successfully!") {
+    showError("register-error", res?.data?.message || "Register failed");
+    return;
+  }
     showAuth("login");
     showToast("Account created! Please sign in.");
   } catch (err) {
-    console.log(err,"er");
-    
+      console.log("FULL ERROR:", err);
+  console.log("RESPONSE:", err?.response);
+  console.log("DATA:", err?.response?.data)
     showError("register-error", getErrorMessage(err));
   } finally {
     setLoading(btn, false, "Create Account");
@@ -348,14 +382,13 @@ async function handleEditPassword(e) {
   clearErrors("edit-error");
   setLoading(btn, true, "Updating…");
 
-  const data = {
-    appName: document.getElementById("edit-site-name").value.trim(),
-    siteUrl: document.getElementById("edit-site-url").value.trim(),
-    username: document.getElementById("edit-username").value.trim(),
-    email: document.getElementById("edit-email").value.trim(),
-    password: document.getElementById("edit-password").value,
-    notes: document.getElementById("edit-notes").value.trim()
-  };
+const data = {
+  appName: document.getElementById("edit-site-name").value.trim(),
+  siteUrl: document.getElementById("edit-site-url").value.trim(),
+  loginUsername: document.getElementById("edit-username").value.trim(),
+  password: document.getElementById("edit-password").value,
+  notes: document.getElementById("edit-notes").value.trim()
+};
 
   try {
     await Passwords.update(selectedEntry.id, data);
@@ -374,7 +407,7 @@ async function handleEditPassword(e) {
 
 async function handleDeletePassword() {
   if (!selectedEntry) return;
-  if (!confirm(`Delete "${selectedEntry.siteName}"? This cannot be undone.`)) return;
+  if (!confirm(`Delete "${selectedEntry.appName}"? This cannot be undone.`)) return;
 
   try {
     await Passwords.delete(selectedEntry.id);
@@ -390,19 +423,35 @@ async function handleDeletePassword() {
 /* ─────────────────────────────────────────────
    AUTOFILL
 ───────────────────────────────────────────── */
-function handleAutofill() {
+async function handleAutofill() {
   if (!selectedEntry) return;
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    chrome.tabs.sendMessage(tabs[0].id, {
-      type: "AUTOFILL",
-      data: {
-        username: selectedEntry.username || selectedEntry.email,
-      password: selectedEntry.decryptedPassword
-      }
-    }, (res) => {
-      showToast(res?.success ? "Autofilled!" : "Could not find fields on this page.", !res?.success);
+
+  try {
+    // fetch decrypted password first
+    const res = await Passwords.getById(selectedEntry.id);
+    const fullEntry = res.data.data;
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      chrome.tabs.sendMessage(
+        tabs[0].id,
+        {
+          type: "AUTOFILL",
+          data: {
+            username: fullEntry.loginUsername,
+            password: fullEntry.password,
+          },
+        },
+        (res) => {
+          showToast(
+            res?.success ? "Autofilled!" : "Could not find fields on this page.",
+            !res?.success
+          );
+        }
+      );
     });
-  });
+  } catch (err) {
+    showToast("Failed to autofill (password not fetched)", true);
+  }
 }
 
 /* ─────────────────────────────────────────────
@@ -431,14 +480,14 @@ function copyToClipboard(text, btnId) {
   });
 }
 
-function getFavicon(url, siteName) {
+function getFavicon(url, appName) {
   if (url) {
     try {
       const domain = new URL(url).hostname;
-      return `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=32" onerror="this.style.display='none';this.nextSibling.style.display='flex'" /><span style="display:none">${(siteName || "?")[0].toUpperCase()}</span>`;
+      return `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=32" onerror="this.style.display='none';this.nextSibling.style.display='flex'" /><span style="display:none">${(appName || "?")[0].toUpperCase()}</span>`;
     } catch {}
   }
-  return `<span>${(siteName || "?")[0].toUpperCase()}</span>`;
+  return `<span>${(appName || "?")[0].toUpperCase()}</span>`;
 }
 
 function escHtml(str) {
@@ -446,16 +495,20 @@ function escHtml(str) {
 }
 
 function getErrorMessage(err) {
+  const res = err?.response?.data;
+console.log(err,"res");
+
+  if (res?.message === "Validation Failed" && typeof res?.data === "object") {
+    return Object.values(res.data).join("\n"); 
+  }
+
   return (
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    err?.response?.data?.data?.message ||   
-    err?.response?.data?.data?.error ||    
+    res?.message ||
+    res?.error ||
     err?.message ||
     "Something went wrong."
   );
 }
-
 function showError(id, msg) {
   const el = document.getElementById(id);
   if (el) { el.textContent = msg; el.classList.remove("hidden"); }

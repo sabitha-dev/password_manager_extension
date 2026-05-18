@@ -1,15 +1,34 @@
-// VaultX Background Service Worker
+let pendingCredential = null;
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("VaultX Password Manager installed.");
+chrome.runtime.onMessage.addListener((message) => {
+
+  if (message.type === "PROMPT_SAVE_CREDENTIAL") {
+    pendingCredential = message.data;
+
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon128.png",
+      title: "VaultX",
+      message: `Save password for ${pendingCredential.domain}?`,
+      buttons: [
+        { title: "Save" },
+        { title: "Cancel" }
+      ]
+    });
+  }
 });
 
-// Listen for messages from popup or content scripts
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "GET_CURRENT_URL") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      sendResponse({ url: tabs[0]?.url || "" });
+chrome.notifications.onButtonClicked.addListener((id, btnIndex) => {
+
+  if (!pendingCredential) return;
+
+  if (btnIndex === 0) {
+    fetch("http://localhost:8080/vault", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(pendingCredential),
     });
-    return true; // keep channel open for async
   }
+
+  pendingCredential = null;
 });

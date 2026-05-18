@@ -35,7 +35,16 @@ async function request(method, url, body) {
       (data && (data.message || data.error)) ||
       res.statusText ||
       "Request failed";
-    throw new Error(msg);
+
+    const error = new Error(msg);
+
+    // IMPORTANT: keep full backend validation data
+    error.response = {
+      status: res.status,
+      data: data,
+    };
+
+    throw error;
   }
 
   return { data };

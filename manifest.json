@@ -16,11 +16,13 @@
       "128": "icons/icon128.png"
     }
   },
-  "permissions": [
-    "storage",
-    "activeTab",
-    "scripting"
-  ],
+ "permissions": [
+  "storage",
+  "activeTab",
+  "scripting",
+  "notifications",
+  "tabs"
+],
   "host_permissions": [
     "<all_urls>"
   ],

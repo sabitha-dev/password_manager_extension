@@ -1,12 +1,15 @@
-// VaultX API Layer — Fetch based (no axios needed)
 
-function getToken() {
-  return localStorage.getItem("vaultx_token");
+async function getToken() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["vaultx_token"], (res) => {
+      resolve(res.vaultx_token);
+    });
+  });
 }
 
 async function request(method, url, body) {
   const headers = { "Content-Type": "application/json" };
-  const token = getToken();
+  const token = await getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(ENV.API_BASE_URL + url, {
@@ -17,8 +20,7 @@ async function request(method, url, body) {
 
   // handle 401 auto logout
   if (res.status === 401) {
-    localStorage.removeItem("vaultx_token");
-    localStorage.removeItem("vaultx_user");
+   chrome.storage.local.remove("vaultx_token");
     throw new Error("Unauthorized. Please login again.");
   }
 
@@ -63,8 +65,7 @@ const Auth = {
     request("POST", "/login", { email, password }),
 
   logout: () => {
-    localStorage.removeItem("vaultx_token");
-    localStorage.removeItem("vaultx_user");
+      chrome.storage.local.remove("vaultx_token");
   }
 };
 

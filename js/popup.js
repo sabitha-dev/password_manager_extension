@@ -12,13 +12,15 @@ let searchQuery = "";
    INIT
 ───────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
-  const token = localStorage.getItem("vaultx_token");
+ chrome.storage.local.get(["vaultx_token"], (result) => {
+  const token = result.vaultx_token;
+
   if (token) {
     showVault();
   } else {
     showAuth("login");
   }
-
+});
   // Auth tab switching
   document.getElementById("tab-login").addEventListener("click", () => showAuth("login"));
   document.getElementById("tab-register").addEventListener("click", () => showAuth("register"));
@@ -218,9 +220,11 @@ async function handleLogin(e) {
       showError("login-error", message || "Login failed. Token not received.");
       return;
     }
-
-    localStorage.setItem("vaultx_token", token);
-    localStorage.setItem("vaultx_user", JSON.stringify(user || {}));
+chrome.storage.local.set({
+  vaultx_token: token
+}, () => {
+  console.log("VaultX token saved");
+});
 
     document.getElementById("user-name").textContent =
       user?.username || user?.email || email;
@@ -283,15 +287,24 @@ async function loadPasswords() {
 
   try {
     const res = await Passwords.getAll();
-    console.log(res,"Res");
-    
+    console.log(res, "Res");
+
     passwords = res.data.data || [];
 
-    const user = JSON.parse(localStorage.getItem("vaultx_user") || "{}");
-    document.getElementById("user-name").textContent = user.username || user.email || "User";
-    document.getElementById("vault-count").textContent = `${passwords.length} item${passwords.length !== 1 ? "s" : ""}`;
+    chrome.storage.local.get(["vaultx_user"], (result) => {
+
+      const user = result.vaultx_user || {};
+
+      document.getElementById("user-name").textContent =
+        user.username || user.email || "User";
+
+    });
+
+    document.getElementById("vault-count").textContent =
+      `${passwords.length} item${passwords.length !== 1 ? "s" : ""}`;
 
     renderPasswordList();
+
   } catch (err) {
     list.innerHTML = `<div class="empty-state">⚠ Failed to load vault.<br><small>${getErrorMessage(err)}</small></div>`;
   }

@@ -3,13 +3,16 @@ let pendingCredential = null;
 chrome.runtime.onMessage.addListener((message) => {
 
   if (message.type === "PROMPT_SAVE_CREDENTIAL") {
-    pendingCredential = message.data;
+
+    chrome.storage.local.set({
+      pendingCredential: message.data
+    });
 
     chrome.notifications.create({
       type: "basic",
-      iconUrl: "icons/icon128.png",
+      iconUrl: chrome.runtime.getURL("icons/icon48.png"),
       title: "VaultX",
-      message: `Save password for ${pendingCredential.domain}?`,
+      message: `Save password for ${message.data.domain}?`,
       buttons: [
         { title: "Save" },
         { title: "Cancel" }
@@ -17,18 +20,45 @@ chrome.runtime.onMessage.addListener((message) => {
     });
   }
 });
-
 chrome.notifications.onButtonClicked.addListener((id, btnIndex) => {
 
-  if (!pendingCredential) return;
+  if (btnIndex !== 0) return;
 
-  if (btnIndex === 0) {
-    fetch("http://localhost:8080/vault", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(pendingCredential),
-    });
-  }
+  chrome.storage.local.get(["pendingCredential", "vaultx_token"], async (result) => {
 
-  pendingCredential = null;
+    const pendingCredential = result.pendingCredential;
+    const token = result.vaultx_token;
+
+    if (!pendingCredential) {
+      console.error("No pending credential found");
+      return;
+    }
+
+    const payload = {
+      siteUrl: pendingCredential.domain,
+      appName: pendingCredential.domain,
+      loginUsername: pendingCredential.username,
+      password: pendingCredential.password,
+      notes: ""
+    };
+
+    try {
+      const response = await fetch("http://localhost:8080/vault", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.text();
+      console.log("SAVE RESPONSE:", data);
+
+      chrome.storage.local.remove("pendingCredential");
+
+    } catch (err) {
+      console.error("SAVE ERROR:", err);
+    }
+  });
 });

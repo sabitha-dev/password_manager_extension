@@ -1,3 +1,43 @@
+// console.log("VaultX running:", location.href);
+// console.log("VaultX content script loaded", chrome?.runtime);
+// let formData = {
+//   username: "",
+//   password: ""
+// };
+
+// document.addEventListener("input", (e) => {
+//   const el = e.target;
+
+//   if (el.type === "email" || el.type === "text") {
+//     formData.username = el.value;
+//   }
+
+//   if (el.type === "password") {
+//     formData.password = el.value;
+//   }
+// });
+
+// document.addEventListener("blur", (e) => {
+//   const el = e.target;
+//   if (el.type !== "password") return;
+
+//   setTimeout(() => {
+//     if (!formData.username || !formData.password) return;
+
+//     console.log("LOGIN DETECTED:", formData);
+
+//     chrome.runtime.sendMessage({
+//       type: "PROMPT_SAVE_CREDENTIAL",
+//       data: {
+//         username: formData.username,
+//         password: formData.password,
+//         domain: location.hostname
+//       }
+//     });
+
+//   }, 500);
+// }, true);
+
 console.log("VaultX running:", location.href);
 
 let formData = {
@@ -5,11 +45,14 @@ let formData = {
   password: ""
 };
 
-// capture typing
+// Capture input values
 document.addEventListener("input", (e) => {
   const el = e.target;
 
-  if (el.type === "email" || el.type === "text") {
+  if (
+    el.type === "email" ||
+    el.type === "text"
+  ) {
     formData.username = el.value;
   }
 
@@ -18,25 +61,20 @@ document.addEventListener("input", (e) => {
   }
 });
 
-// detect user finished login (MOST RELIABLE)
-document.addEventListener("blur", (e) => {
-  const el = e.target;
+// Detect form submit/login button click
+document.addEventListener("submit", (e) => {
 
-  if (el.type !== "password") return;
+  if (!formData.username || !formData.password) return;
 
-  setTimeout(() => {
-    if (!formData.username || !formData.password) return;
+  console.log("LOGIN SUBMIT DETECTED", formData);
 
-    console.log("LOGIN DETECTED:", formData);
+  chrome.runtime.sendMessage({
+    type: "PROMPT_SAVE_CREDENTIAL",
+    data: {
+      username: formData.username,
+      password: formData.password,
+      domain: location.hostname
+    }
+  });
 
-    chrome.runtime.sendMessage({
-      type: "PROMPT_SAVE_CREDENTIAL",
-      data: {
-        username: formData.username,
-        password: formData.password,
-        domain: location.hostname
-      }
-    });
-
-  }, 500);
 }, true);

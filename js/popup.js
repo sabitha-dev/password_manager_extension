@@ -238,10 +238,12 @@ chrome.storage.local.set({
 }
 async function handleRegister(e) {
   e.preventDefault();
+
   const username = document.getElementById("reg-username").value.trim();
   const email = document.getElementById("reg-email").value.trim();
   const password = document.getElementById("reg-password").value;
   const confirm = document.getElementById("reg-confirm").value;
+
   const btn = document.getElementById("btn-register");
 
   clearErrors("register-error");
@@ -254,19 +256,34 @@ async function handleRegister(e) {
   setLoading(btn, true, "Creating account…");
 
   try {
-   const res= await Auth.register(username, email, password);
-   console.log(res,"Res");
-   if (res?.data?.message !== "User registered successfully!") {
-    showError("register-error", res?.data?.message || "Register failed");
-    return;
-  }
+    const res = await Auth.register(username, email, password);
+
+    console.log(res, "Res");
+
+    if (res?.data?.message !== "User registered successfully!") {
+      showError(
+        "register-error",
+        res?.data?.message || "Register failed"
+      );
+      return;
+    }
+
+    // ✅ Clear register form
+    document.getElementById("register-form").reset();
+
+    // ✅ Navigate to login view
     showAuth("login");
+
+    // ✅ Optional: auto fill login email
+    document.getElementById("login-email").value = email;
+
     showToast("Account created! Please sign in.");
+
   } catch (err) {
-      console.log("FULL ERROR:", err);
-  console.log("RESPONSE:", err?.response);
-  console.log("DATA:", err?.response?.data)
+    console.log("FULL ERROR:", err);
+
     showError("register-error", getErrorMessage(err));
+
   } finally {
     setLoading(btn, false, "Create Account");
   }

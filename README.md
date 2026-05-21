@@ -100,3 +100,6 @@ Place PNG icons in the `icons/` folder:
 - **Show/hide** password toggles
 - Toast notifications
 - Premium dark UI with Syne + DM Mono fonts
+
+
+SuperSecretPassword!

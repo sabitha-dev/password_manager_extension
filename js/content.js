@@ -1,61 +1,17 @@
-
-// console.log("VaultX running:", location.href);
-
-// let formData = {
-//   username: "",
-//   password: ""
-// };
-
-// // Capture input values
-// document.addEventListener("input", (e) => {
-//   const el = e.target;
-
-//   if (
-//     el.type === "email" ||
-//     el.type === "text"
-//   ) {
-//     formData.username = el.value;
-//   }
-
-//   if (el.type === "password") {
-//     formData.password = el.value;
-//   }
-// });
-
-// document.addEventListener("submit", (e) => {
-
-//   if (!formData.username || !formData.password) return;
-
-//   console.log("LOGIN SUBMIT DETECTED", formData);
-
-//   chrome.runtime.sendMessage({
-//     type: "PROMPT_SAVE_CREDENTIAL",
-//     data: {
-//       username: formData.username,
-//       password: formData.password,
-//       domain: location.hostname
-//     }
-//   });
-
-// }, true);
-
-
 console.log("VaultX running:", location.href);
 
 let formData = {
   username: "",
-  password: ""
+  password: "",
 };
 
 let passwords = [];
 
 // CAPTURE INPUTS
 document.addEventListener("input", (e) => {
-
   const el = e.target;
 
   if (el.type === "password") {
-
     formData.password = el.value;
 
     if (!passwords.includes(el.value)) {
@@ -66,82 +22,69 @@ document.addEventListener("input", (e) => {
   if (el.type === "email" || el.type === "text") {
     formData.username = el.value;
   }
-
 });
 
 // SUBMIT DETECTION
-document.addEventListener("submit", (e) => {
 
-  const passwordFields = [
-    ...document.querySelectorAll('input[type="password"]')
-  ].filter(input => input.value);
+document.addEventListener(
+  "submit",
+  () => {
+    const passwordFields = [
+      ...document.querySelectorAll('input[type="password"]'),
+    ].filter((input) => input.value);
 
-  console.log("PASSWORD FIELDS:", passwordFields);
+    const filledPasswords = passwordFields.map((input) => input.value);
 
-  const filledPasswords =
-    passwordFields.map(input => input.value);
-
-  // UPDATE PASSWORD
-  if (filledPasswords.length >= 2) {
-
-    const oldPassword = filledPasswords[0];
-
-    const newPassword =
-      filledPasswords[filledPasswords.length - 1];
-
-    // SAME PASSWORD
-    if (oldPassword === newPassword) {
-      passwords = [];
+    if (!formData.username || filledPasswords.length === 0) {
       return;
     }
 
-    console.log("UPDATE DETECTED");
+    // WAIT FOR LOGIN SUCCESS
+    setTimeout(() => {
+      const pageText = document.body.innerText.toLowerCase();
 
-    chrome.runtime.sendMessage({
-      type: "PROMPT_UPDATE_CREDENTIAL",
-      data: {
-        username: formData.username || "Admin",
-        password: newPassword,
-        domain: location.hostname
+      const isError =
+        pageText.includes("invalid") ||
+        pageText.includes("wrong password") ||
+        pageText.includes("incorrect") ||
+        pageText.includes("failed") ||
+        pageText.includes("error") ||
+        pageText.includes("try again") ||
+        pageText.includes("not found") ||
+        pageText.includes("not match") ||
+        pageText.includes("login failed") ||
+        pageText.includes("invalid credentials");
+
+      if (isError) {
+        console.log("LOGIN FAILED → NO SAVE/UPDATE");
+        return;
       }
-    });
 
-  }
+      chrome.runtime.sendMessage({
+        type: "LOGIN_ATTEMPT",
+        data: {
+          username: formData.username,
+          password: filledPasswords[filledPasswords.length - 1],
+          domain: location.hostname,
+        },
+      });
 
-  // NORMAL LOGIN
-    else if (filledPasswords.length === 1) {
-
-    console.log("LOGIN DETECTED");
-
-    chrome.runtime.sendMessage({
-      type: "PROMPT_SAVE_CREDENTIAL",
-      data: {
-        username: formData.username,
-        password: filledPasswords[0],
-        domain: location.hostname
-      }
-    });
-
-  }
-
-  passwords = [];
-
-}, true);
-
+      console.log("LOGIN SUCCESS DETECTED");
+    }, 3000);
+  },
+  true,
+);
 window.addEventListener("load", () => {
-
-  const hasPasswordField =
-    document.querySelector('input[type="password"]');
+  const hasPasswordField = document.querySelector('input[type="password"]');
 
   if (!hasPasswordField) return;
 
   chrome.runtime.sendMessage(
     {
       type: "GET_CREDENTIALS",
-      domain: location.hostname
+      domain: location.hostname,
     },
     (res) => {
-
       console.log("AUTOFILL RESPONSE:", res);
 
       if (!res?.data) return;
@@ -149,36 +92,28 @@ window.addEventListener("load", () => {
       const creds = res.data;
 
       const shouldFill = confirm(
-        `Autofill saved password for ${creds.username}?`
+        `Autofill saved password for ${creds.username}?`,
       );
 
       if (!shouldFill) return;
 
       const userField = document.querySelector(
-        'input[type="email"], input[type="text"]'
+        'input[type="email"], input[type="text"]',
       );
 
-      const passField = document.querySelector(
-        'input[type="password"]'
-      );
+      const passField = document.querySelector('input[type="password"]');
 
       if (userField) {
         userField.value = creds.username;
-        userField.dispatchEvent(
-          new Event("input", { bubbles: true })
-        );
+        userField.dispatchEvent(new Event("input", { bubbles: true }));
       }
 
       if (passField) {
         passField.value = creds.password;
-        passField.dispatchEvent(
-          new Event("input", { bubbles: true })
-        );
+        passField.dispatchEvent(new Event("input", { bubbles: true }));
       }
 
       console.log("AUTOFILL SUCCESS");
-
-    }
+    },
   );
-
 });

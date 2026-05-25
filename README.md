@@ -31,10 +31,9 @@ password-manager-extension/
 
 ### 1. Set your backend URL
 
-Edit `js/config.js`:
 ```js
 const ENV = {
-  API_BASE_URL: "http://localhost:8080/api"
+  API_BASE_URL: "http://localhost:8080/api",
   // Change to your deployed URL in production
 };
 ```
@@ -42,6 +41,7 @@ const ENV = {
 ### 2. Add icons
 
 Place PNG icons in the `icons/` folder:
+
 - `icon16.png` (16×16)
 - `icon48.png` (48×48)
 - `icon128.png` (128×128)
@@ -58,22 +58,25 @@ Place PNG icons in the `icons/` folder:
 ## 🔌 Expected Spring Boot API Endpoints
 
 ### Auth
-| Method | Path | Body | Response |
-|--------|------|------|----------|
-| POST | `/api/auth/register` | `{ username, email, password }` | `{ message }` |
-| POST | `/api/auth/login` | `{ email, password }` | `{ token, user: { id, username, email } }` |
+
+| Method | Path                 | Body                            | Response                                   |
+| ------ | -------------------- | ------------------------------- | ------------------------------------------ |
+| POST   | `/api/auth/register` | `{ username, email, password }` | `{ message }`                              |
+| POST   | `/api/auth/login`    | `{ email, password }`           | `{ token, user: { id, username, email } }` |
 
 ### Passwords (JWT protected via `Authorization: Bearer <token>`)
-| Method | Path | Body | Response |
-|--------|------|------|----------|
-| GET | `/api/passwords` | — | `[ PasswordEntry ]` |
-| GET | `/api/passwords/:id` | — | `PasswordEntry` |
-| POST | `/api/passwords` | `PasswordEntry` | `PasswordEntry` |
-| PUT | `/api/passwords/:id` | `PasswordEntry` | `PasswordEntry` |
-| DELETE | `/api/passwords/:id` | — | `{ message }` |
-| GET | `/api/passwords/search?q=...` | — | `[ PasswordEntry ]` |
+
+| Method | Path                          | Body            | Response            |
+| ------ | ----------------------------- | --------------- | ------------------- |
+| GET    | `/api/passwords`              | —               | `[ PasswordEntry ]` |
+| GET    | `/api/passwords/:id`          | —               | `PasswordEntry`     |
+| POST   | `/api/passwords`              | `PasswordEntry` | `PasswordEntry`     |
+| PUT    | `/api/passwords/:id`          | `PasswordEntry` | `PasswordEntry`     |
+| DELETE | `/api/passwords/:id`          | —               | `{ message }`       |
+| GET    | `/api/passwords/search?q=...` | —               | `[ PasswordEntry ]` |
 
 ### PasswordEntry shape
+
 ```json
 {
   "id": 1,
@@ -101,5 +104,3 @@ Place PNG icons in the `icons/` folder:
 - Toast notifications
 - Premium dark UI with Syne + DM Mono fonts
 
-
-SuperSecretPassword!

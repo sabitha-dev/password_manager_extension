@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "VaultX – Password Manager",
+  "name": "Vault – Password Manager",
   "version": "1.0.0",
   "description": "Securely store and manage your passwords with VaultX.",
   "icons": {
@@ -16,18 +16,11 @@
       "128": "icons/icon128.png"
     }
   },
- "permissions": [
-  "storage",
-  "activeTab",
-  "scripting",
-  "notifications",
-  "tabs"
-],
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "permissions": ["storage", "activeTab", "scripting", "notifications", "tabs"],
+  "host_permissions": ["<all_urls>"],
   "background": {
-    "service_worker": "js/background.js"
+    "service_worker": "js/background.js",
+    "type": "module"
   },
   "content_scripts": [
     {

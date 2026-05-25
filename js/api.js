@@ -1,4 +1,4 @@
-
+import { ENV } from "./env.js";
 async function getToken() {
   return new Promise((resolve) => {
     chrome.storage.local.get(["vaultx_token"], (res) => {
@@ -20,7 +20,7 @@ async function request(method, url, body) {
 
   // handle 401 auto logout
   if (res.status === 401) {
-   chrome.storage.local.remove("vaultx_token");
+    chrome.storage.local.remove("vaultx_token");
     throw new Error("Unauthorized. Please login again.");
   }
 
@@ -54,19 +54,18 @@ async function request(method, url, body) {
 
 /* ── AUTH ── */
 const Auth = {
-   register: (username, email, password) =>
-     request("POST","/register", {
-      name: username, 
+  register: (username, email, password) =>
+    request("POST", "/register", {
+      name: username,
       email: email,
-      password: password
+      password: password,
     }),
 
-  login: (email, password) =>
-    request("POST", "/login", { email, password }),
+  login: (email, password) => request("POST", "/login", { email, password }),
 
   logout: () => {
-      chrome.storage.local.remove("vaultx_token");
-  }
+    chrome.storage.local.remove("vaultx_token");
+  },
 };
 
 /* ── PASSWORDS ── */
@@ -79,5 +78,6 @@ const Passwords = {
 
   update: (id, data) => request("PATCH", `/vault/${id}`, data),
 
-  delete: (id) => request("DELETE", `/vault/${id}`)
+  delete: (id) => request("DELETE", `/vault/${id}`),
 };
+export { Auth, Passwords };

@@ -1,124 +1,16 @@
-// let pendingCredential = null;
-
-// chrome.runtime.onMessage.addListener((message) => {
-
-//   if (message.type === "PROMPT_SAVE_CREDENTIAL") {
-
-//     chrome.storage.local.set({
-//       pendingCredential: message.data
-//     });
-
-//     chrome.notifications.create({
-//       type: "basic",
-//       iconUrl: chrome.runtime.getURL("icons/icon48.png"),
-//       title: "VaultX",
-//       message: `Save password for ${message.data.domain}?`,
-//       buttons: [
-//         { title: "Save" },
-//         { title: "Cancel" }
-//       ]
-//     });
-//   }
-// });
-// chrome.notifications.onButtonClicked.addListener((id, btnIndex) => {
-
-//   if (btnIndex !== 0) return;
-
-//   chrome.storage.local.get(["pendingCredential", "vaultx_token"], async (result) => {
-
-//     const pendingCredential = result.pendingCredential;
-//     const token = result.vaultx_token;
-
-//     if (!pendingCredential) {
-//       console.error("No pending credential found");
-//       return;
-//     }
-
-//     const payload = {
-//       siteUrl: pendingCredential.domain,
-//       appName: pendingCredential.domain,
-//       loginUsername: pendingCredential.username,
-//       password: pendingCredential.password,
-//       notes: ""
-//     };
-
-//     try {
-//       const response = await fetch("http://localhost:8080/vault", {
-//         method: "POST",
-//         headers: {
-//           "Content-Type": "application/json",
-//           "Authorization": `Bearer ${token}`
-//         },
-//         body: JSON.stringify(payload),
-//       });
-
-//       const data = await response.text();
-//       console.log("SAVE RESPONSE:", data);
-
-//       chrome.storage.local.remove("pendingCredential");
-
-//     } catch (err) {
-//       console.error("SAVE ERROR:", err);
-//     }
-//   });
-// });
-
-// chrome.runtime.onMessage.addListener((message) => {
-
-//   // SAVE
-//   if (message.type === "PROMPT_SAVE_CREDENTIAL") {
-
-//     chrome.storage.local.set({
-//       pendingCredential: message.data,
-//       pendingAction: "save"
-//     });
-
-//     chrome.notifications.create({
-//       type: "basic",
-//       iconUrl: chrome.runtime.getURL("icons/icon48.png"),
-//       title: "VaultX",
-//       message: `Save password for ${message.data.domain}?`,
-//       buttons: [
-//         { title: "Save" },
-//         { title: "Cancel" }
-//       ]
-//     });
-//   }
-
-//   // UPDATE
-//   if (message.type === "PROMPT_UPDATE_CREDENTIAL") {
-
-//     chrome.storage.local.set({
-//       pendingCredential: message.data,
-//       pendingAction: "update"
-//     });
-
-//     chrome.notifications.create({
-//       type: "basic",
-//       iconUrl: chrome.runtime.getURL("icons/icon48.png"),
-//       title: "VaultX",
-//       message: `Update password for ${message.data.domain}?`,
-//       buttons: [
-//         { title: "Update" },
-//         { title: "Cancel" }
-//       ]
-//     });
-//   }
-// });
+import { ENV } from "./env.js";
 
 chrome.notifications.onButtonClicked.addListener(async (id, btnIndex) => {
-
   if (btnIndex !== 0) return;
 
-chrome.storage.local.get(
-  ["pendingCredential", "vaultx_token", "pendingAction"],
-  async (result) => {
+  chrome.storage.local.get(
+    ["pendingCredential", "vaultx_token", "pendingAction"],
+    async (result) => {
+      const pendingCredential = result.pendingCredential;
+      const token = result.vaultx_token;
+      const action = result.pendingAction;
 
-    const pendingCredential = result.pendingCredential;
-    const token = result.vaultx_token;
-    const action = result.pendingAction;
-
-    if (!pendingCredential) return;
+      if (!pendingCredential) return;
 
       // PAYLOAD HERE
       const payload = {
@@ -126,19 +18,17 @@ chrome.storage.local.get(
         appName: pendingCredential.domain,
         loginUsername: pendingCredential.username,
         password: pendingCredential.password,
-        notes: ""
+        notes: "",
       };
 
       try {
-
         // UPDATE
         if (action === "update") {
-
-          const res = await fetch("http://localhost:8080/vault", {
+          const res = await fetch(`${ENV.API_BASE_URL}/vault`, {
             method: "GET",
             headers: {
-              Authorization: `Bearer ${token}`
-            }
+              Authorization: `Bearer ${token}`,
+            },
           });
 
           const data = await res.json();
@@ -148,147 +38,139 @@ chrome.storage.local.get(
           const existing = vaultList.find(
             (v) =>
               v.siteUrl?.includes(pendingCredential.domain) &&
-              v.loginUsername === pendingCredential.username
+              v.loginUsername === pendingCredential.username,
           );
 
-          if (existing) {
+          console.log("UPDATE CHECK:", {
+            pendingCredential,
+            existing,
+          });
 
-            await fetch(`http://localhost:8080/vault/${existing.id}`, {
+          if (existing) {
+            await fetch(`${ENV.API_BASE_URL}/vault/${existing.id}`, {
               method: "PATCH",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`
+                Authorization: `Bearer ${token}`,
               },
               body: JSON.stringify({
-                password: pendingCredential.password
-              })
+                password: pendingCredential.password,
+              }),
             });
 
             console.log("PASSWORD UPDATED");
           }
-
         }
 
         // SAVE
         else {
-
-         const res= await fetch("http://localhost:8080/vault", {
+          const res = await fetch(`${ENV.API_BASE_URL}/vault`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`
+              Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
           });
-console.log(res);
-
+          console.log(res);
         }
 
-        chrome.storage.local.remove([
-          "pendingCredential",
-          "pendingAction"
-        ]);
-
+        chrome.storage.local.remove(["pendingCredential", "pendingAction"]);
       } catch (err) {
         console.error(err);
       }
-    }
+    },
   );
 });
+
 chrome.runtime.onMessage.addListener((message) => {
+  if (message.type !== "LOGIN_ATTEMPT") return;
 
-  // SAVE
-  if (message.type === "PROMPT_SAVE_CREDENTIAL") {
+  chrome.storage.local.get(["vaultx_token"], async (result) => {
+    const token = result.vaultx_token;
+    if (!token) return;
 
-    chrome.storage.local.get(["vaultx_token"], async (result) => {
+    try {
+      const res = await fetch(`${ENV.API_BASE_URL}/vault`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      const token = result.vaultx_token;
+      const data = await res.json();
+      const vaultList = data.data || [];
 
-      if (!token) return;
+      const existing = vaultList.find(
+        (v) =>
+          v.siteUrl?.includes(message.data.domain) &&
+          v.loginUsername === message.data.username,
+      );
+      console.log(vaultList, "vaultist");
 
-      try {
+      console.log(existing, "exisitng");
 
-        // GET SAVED VAULTS
-        const res = await fetch("http://localhost:8080/vault", {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-
-        const data = await res.json();
-
-        const vaultList = data.data || [];
-
-        // CHECK SAME DOMAIN + USERNAME
-        const alreadyExists = vaultList.find(
-          (v) =>
-            v.siteUrl?.includes(message.data.domain) &&
-            v.loginUsername === message.data.username
-        );
-
-        // ALREADY SAVED
-        if (alreadyExists) {
-          console.log("Credential already saved");
-          return;
-        }
-
-        // TEMP STORAGE
+      // ✅ SAVE FLOW
+      if (!existing) {
         chrome.storage.local.set({
           pendingCredential: message.data,
-          pendingAction: "save"
+          pendingAction: "save",
         });
 
-        // SHOW NOTIFICATION
         chrome.notifications.create({
           type: "basic",
-          iconUrl: chrome.runtime.getURL("icons/icon48.png"),
+          iconUrl: chrome.runtime.getURL("icons/Notification_icon.jpeg"),
           title: "VaultX",
           message: `Save password for ${message.data.domain}?`,
-          buttons: [
-            { title: "Save" },
-            { title: "Cancel" }
-          ],
-          priority: 2
+          buttons: [{ title: "Save" }, { title: "Cancel" }],
+          priority: 2,
         });
 
-      } catch (err) {
-        console.error(err);
+        console.log("SAVE NOTIFICATION TRIGGERED");
+        return;
+      }
+      const detailRes = await fetch(
+        `${ENV.API_BASE_URL}/vault/${existing.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      const detailData = await detailRes.json();
+
+      const savedPassword = detailData.data.password;
+
+      console.log("SAVED PASSWORD:", savedPassword);
+      console.log("CURRENT PASSWORD:", message.data.password);
+      if (savedPassword !== message.data.password) {
+        chrome.storage.local.set({
+          pendingCredential: {
+            ...message.data,
+            id: existing.id,
+          },
+          pendingAction: "update",
+        });
+
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icons/Notification_icon.jpeg"),
+          title: "VaultX",
+          message: `Password changed. Update for ${message.data.domain}?`,
+          buttons: [{ title: "Update" }, { title: "Cancel" }],
+          priority: 2,
+        });
+
+        console.log("UPDATE NOTIFICATION TRIGGERED");
+        return;
       }
 
-    });
-
-  }
-
-  // UPDATE
-  if (message.type === "PROMPT_UPDATE_CREDENTIAL") {
-
-    chrome.storage.local.set({
-      pendingCredential: message.data,
-      pendingAction: "update"
-    });
-
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: chrome.runtime.getURL("icons/icon48.png"),
-      title: "VaultX",
-      message: `Update password for ${message.data.domain}?`,
-      buttons: [
-        { title: "Update" },
-        { title: "Cancel" }
-      ],
-      priority: 2
-    });
-  }
-
+      console.log("No change → no notification");
+    } catch (err) {
+      console.error(err);
+    }
+  });
 });
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-
-  // GET CREDENTIALS
   if (message.type === "GET_CREDENTIALS") {
-
     chrome.storage.local.get(["vaultx_token"], async (result) => {
-
       const token = result.vaultx_token;
 
       if (!token) {
@@ -297,21 +179,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       try {
-
-        const res = await fetch("http://localhost:8080/vault", {
+        const res = await fetch(`${ENV.API_BASE_URL}/vault`, {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${token}`
-          }
+            Authorization: `Bearer ${token}`,
+          },
         });
 
         const data = await res.json();
 
         const vaultList = data.data || [];
 
-        const matched = vaultList.find(
-          (v) =>
-            v.siteUrl?.includes(message.domain)
+        const matched = vaultList.find((v) =>
+          v.siteUrl?.includes(message.domain),
         );
 
         if (!matched) {
@@ -320,12 +200,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         const detailRes = await fetch(
-          `http://localhost:8080/vault/${matched.id}`,
+          `${ENV.API_BASE_URL}/vault/${matched.id}`,
           {
             headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
+              Authorization: `Bearer ${token}`,
+            },
+          },
         );
 
         const detailData = await detailRes.json();
@@ -333,18 +213,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           data: {
             username: detailData.data.loginUsername,
-            password: detailData.data.password
-          }
+            password: detailData.data.password,
+          },
         });
-
       } catch (err) {
         console.error(err);
         sendResponse({ data: null });
       }
-
     });
 
     return true;
   }
-
 });

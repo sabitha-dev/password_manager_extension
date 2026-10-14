@@ -1,106 +1,49 @@
 # VaultX – Chrome Extension Password Manager
 
-A complete Chrome extension for managing passwords, backed by a Spring Boot API.
+Manifest V3 Chrome extension backed by the Spring Boot API in `Password_Manager_Backend`.
 
----
-
-## 📁 Project Structure
+## Structure
 
 ```
-password-manager-extension/
-├── manifest.json          # Chrome Extension manifest v3
-├── popup.html             # Full extension UI (all views)
-├── .env.example           # Environment config template
-├── css/
-│   └── popup.css          # All styles
-├── js/
-│   ├── config.js          # ← SET YOUR BACKEND URL HERE
-│   ├── api.js             # Axios API layer (Auth + Passwords)
-│   ├── popup.js           # Full app logic
-│   ├── background.js      # Service worker
-│   └── content.js         # Autofill content script
-└── icons/
-    ├── icon16.png
-    ├── icon48.png
-    └── icon128.png
+├── manifest.json
+├── popup.html            # popup UI (all views)
+├── css/popup.css
+├── icons/
+└── js/
+    ├── env.js            # ← backend URL
+    ├── api.js            # API layer used by the popup
+    ├── popup.js          # popup logic
+    ├── background.js     # service worker: "Save / Update password" notifications
+    ├── content.js        # detects logins, autofills forms
+    └── utils.js          # site matching helpers
 ```
 
----
+## Setup
 
-## ⚙️ Setup
+1. Set the backend URL in `js/env.js` **and** the same origin in `host_permissions` in `manifest.json`
+   (e.g. `"http://localhost:8080/*"` for local development).
+2. Open `chrome://extensions/`, enable **Developer mode**, click **Load unpacked** and select this folder.
+3. After changing any file, press **Reload** on the extension card (and refresh open tabs so the new content script is used).
 
-### 1. Set your backend URL
+## How the save / update alerts work
 
-```js
-const ENV = {
-  API_BASE_URL: "http://localhost:8080/api",
-  // Change to your deployed URL in production
-};
-```
+1. `content.js` notices a login (form submit, Enter key, or a sign-in button click) and sends it to the background worker.
+2. `background.js` waits ~2.5 s, asks the page whether the login failed, and checks the vault.
+3. New site/username → **Save** prompt. Known site/username with a different password → **Update** prompt.
+4. Clicking the button saves/updates and shows a confirmation notification. Errors (server unreachable, session expired) are also shown as notifications.
 
-### 2. Add icons
+Pending passwords are kept only in `chrome.storage.session` (memory, cleared when the browser closes).
 
-Place PNG icons in the `icons/` folder:
+## API used
 
-- `icon16.png` (16×16)
-- `icon48.png` (48×48)
-- `icon128.png` (128×128)
+| Method | Path          | Notes                                                       |
+| ------ | ------------- | ----------------------------------------------------------- |
+| POST   | `/register`   | `{ name, email, password }`                                 |
+| POST   | `/login`      | `{ email, password }` → `data` is the JWT                   |
+| GET    | `/vault`      | list (passwords returned encrypted)                         |
+| GET    | `/vault/{id}` | one entry with the decrypted password                       |
+| POST   | `/vault`      | `{ siteUrl, appName, loginUsername, password, notes }`      |
+| PATCH  | `/vault/{id}` | any subset of the fields above                              |
+| DELETE | `/vault/{id}` |                                                             |
 
-### 3. Load in Chrome
-
-1. Open `chrome://extensions/`
-2. Enable **Developer Mode** (top right)
-3. Click **Load unpacked**
-4. Select the `password-manager-extension/` folder
-
----
-
-## 🔌 Expected Spring Boot API Endpoints
-
-### Auth
-
-| Method | Path                 | Body                            | Response                                   |
-| ------ | -------------------- | ------------------------------- | ------------------------------------------ |
-| POST   | `/api/auth/register` | `{ username, email, password }` | `{ message }`                              |
-| POST   | `/api/auth/login`    | `{ email, password }`           | `{ token, user: { id, username, email } }` |
-
-### Passwords (JWT protected via `Authorization: Bearer <token>`)
-
-| Method | Path                          | Body            | Response            |
-| ------ | ----------------------------- | --------------- | ------------------- |
-| GET    | `/api/passwords`              | —               | `[ PasswordEntry ]` |
-| GET    | `/api/passwords/:id`          | —               | `PasswordEntry`     |
-| POST   | `/api/passwords`              | `PasswordEntry` | `PasswordEntry`     |
-| PUT    | `/api/passwords/:id`          | `PasswordEntry` | `PasswordEntry`     |
-| DELETE | `/api/passwords/:id`          | —               | `{ message }`       |
-| GET    | `/api/passwords/search?q=...` | —               | `[ PasswordEntry ]` |
-
-### PasswordEntry shape
-
-```json
-{
-  "id": 1,
-  "siteName": "GitHub",
-  "siteUrl": "https://github.com",
-  "username": "johndoe",
-  "email": "john@example.com",
-  "password": "s3cr3t!",
-  "notes": "Work account"
-}
-```
-
----
-
-## ✨ Features
-
-- **Login / Register** with JWT auth
-- **Vault list** with search/filter
-- **Add, View, Edit, Delete** passwords
-- All fields: site name, URL, username, email, password, notes
-- **Copy to clipboard** (username, email, password)
-- **Autofill** into browser forms
-- **Password generator** (cryptographically secure)
-- **Show/hide** password toggles
-- Toast notifications
-- Premium dark UI with Syne + DM Mono fonts
-
+All `/vault` calls need `Authorization: Bearer <token>`; an expired token returns `401`.

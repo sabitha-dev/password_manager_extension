@@ -1,27 +1,42 @@
 import { ENV } from "./env.js";
+
+// Free hosting tiers can take up to a minute to wake up, so allow for that.
+const REQUEST_TIMEOUT_MS = 70000;
+const AUTH_PATHS = ["/login", "/register"];
+
 async function getToken() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(["vaultx_token"], (res) => {
-      resolve(res.vaultx_token);
-    });
-  });
+  const res = await chrome.storage.local.get("vaultx_token");
+  return res.vaultx_token;
 }
 
 async function request(method, url, body) {
+  const isAuthCall = AUTH_PATHS.includes(url);
   const headers = { "Content-Type": "application/json" };
-  const token = await getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(ENV.API_BASE_URL + url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  if (!isAuthCall) {
+    const token = await getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
 
-  // handle 401 auto logout
-  if (res.status === 401) {
-    chrome.storage.local.remove("vaultx_token");
-    throw new Error("Unauthorized. Please login again.");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let res;
+  try {
+    res = await fetch(ENV.API_BASE_URL + url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    throw new Error(
+      err?.name === "AbortError"
+        ? "The server is taking too long to respond. Please try again."
+        : "Cannot reach the server. Check your connection and try again.",
+    );
+  } finally {
+    clearTimeout(timer);
   }
 
   let data = null;
@@ -32,6 +47,14 @@ async function request(method, url, body) {
     data = text;
   }
 
+  // Expired / invalid token on a protected call -> sign the user out.
+  if (res.status === 401 && !isAuthCall) {
+    await chrome.storage.local.remove(["vaultx_token", "vaultx_user"]);
+    const error = new Error("Session expired. Please sign in again.");
+    error.code = "SESSION_EXPIRED";
+    throw error;
+  }
+
   if (!res.ok) {
     const msg =
       (data && (data.message || data.error)) ||
@@ -40,7 +63,7 @@ async function request(method, url, body) {
 
     const error = new Error(msg);
 
-    // IMPORTANT: keep full backend validation data
+    // Keep the full backend validation data so the UI can show field errors.
     error.response = {
       status: res.status,
       data: data,
@@ -63,9 +86,7 @@ const Auth = {
 
   login: (email, password) => request("POST", "/login", { email, password }),
 
-  logout: () => {
-    chrome.storage.local.remove("vaultx_token");
-  },
+  logout: () => chrome.storage.local.remove(["vaultx_token", "vaultx_user"]),
 };
 
 /* ── PASSWORDS ── */

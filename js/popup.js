@@ -112,12 +112,18 @@ document.addEventListener("DOMContentLoaded", () => {
       "btn-copy-email",
     );
   });
-  document.getElementById("btn-copy-password").addEventListener("click", () => {
-    copyToClipboard(
-      document.getElementById("detail-password-val").dataset.raw,
-      "btn-copy-password",
-    );
-  });
+  document
+    .getElementById("btn-copy-password")
+    .addEventListener("click", async () => {
+      if (!selectedEntry) return;
+      try {
+        const res = await Passwords.getById(selectedEntry.id);
+        copyToClipboard(res.data.data.password, "btn-copy-password");
+      } catch (err) {
+        if (handleSessionExpired(err)) return;
+        showToast("Failed to copy password", true);
+      }
+    });
 
   // Autofill button
   document
@@ -181,8 +187,15 @@ function showDetail(entry) {
 
   document.getElementById("detail-site").textContent = entry.appName || "—";
 
-  document.getElementById("detail-url").textContent = entry.siteUrl || "—";
-  document.getElementById("detail-url").href = entry.siteUrl || "—";
+  const urlEl = document.getElementById("detail-url");
+  urlEl.textContent = entry.siteUrl || "—";
+  const safeUrl = toSafeUrl(entry.siteUrl);
+  if (safeUrl) {
+    urlEl.href = safeUrl;
+    urlEl.rel = "noopener noreferrer";
+  } else {
+    urlEl.removeAttribute("href");
+  }
 
   document.getElementById("detail-appname").textContent = entry.appName || "—";
   document.getElementById("detail-username").textContent =
@@ -191,7 +204,9 @@ function showDetail(entry) {
 
   const pwEl = document.getElementById("detail-password-val");
   pwEl.textContent = "••••••••";
-  pwEl.dataset.raw = entry.encryptedPassword || "";
+  delete pwEl.dataset.raw;
+  // Only the decrypted password is ever shown / copied (never the stored ciphertext).
+  delete entry.password;
   pwEl.dataset.visible = "false";
   document.getElementById("btn-reveal-password").onclick = async () => {
     const visible = pwEl.dataset.visible === "true";
@@ -214,7 +229,9 @@ function showDetail(entry) {
 
       // update selectedEntry so autofill also works
       selectedEntry.password = fullEntry.password;
+      pwEl.dataset.raw = fullEntry.password;
     } catch (err) {
+      if (handleSessionExpired(err)) return;
       showToast("Failed to reveal password", true);
     }
   };
@@ -224,22 +241,21 @@ function showDetail(entry) {
 
 async function showEditForm(entry) {
   try {
-    console.log(entry);
-
     const res = await Passwords.getById(entry.id);
     const fullEntry = res.data.data;
 
-    document.getElementById("edit-site-name").value = fullEntry.appName || "-";
-    document.getElementById("edit-site-url").value = fullEntry.siteUrl || "-";
+    document.getElementById("edit-site-name").value = fullEntry.appName || "";
+    document.getElementById("edit-site-url").value = fullEntry.siteUrl || "";
     document.getElementById("edit-username").value =
-      fullEntry.loginUsername || "-";
-    document.getElementById("edit-password").value = fullEntry.password || "-";
-    document.getElementById("edit-notes").value = fullEntry.notes || "-";
+      fullEntry.loginUsername || "";
+    document.getElementById("edit-password").value = fullEntry.password || "";
+    document.getElementById("edit-notes").value = fullEntry.notes || "";
 
     document.getElementById("edit-password").type = "password";
     clearErrors("edit-error");
     showView("view-edit");
   } catch (err) {
+    if (handleSessionExpired(err)) return;
     showToast("Failed to load password for editing", true);
   }
 }
@@ -261,23 +277,19 @@ async function handleLogin(e) {
 
     const message = res?.data?.message;
     const token = res?.data?.data;
-    const user = res?.data?.user;
 
     if (!token) {
       showError("login-error", message || "Login failed. Token not received.");
       return;
     }
-    chrome.storage.local.set(
-      {
-        vaultx_token: token,
-      },
-      () => {
-        console.log("VaultX token saved");
-      },
-    );
 
-    document.getElementById("user-name").textContent =
-      user?.username || user?.email || email;
+    // Wait until the token is stored before loading the vault.
+    await chrome.storage.local.set({
+      vaultx_token: token,
+      vaultx_user: { email },
+    });
+
+    document.getElementById("user-name").textContent = email;
 
     showVault();
   } catch (err) {
@@ -306,14 +318,9 @@ async function handleRegister(e) {
   setLoading(btn, true, "Creating account…");
 
   try {
-    const res = await Auth.register(username, email, password);
+    await Auth.register(username, email, password);
 
-    console.log(res, "Res");
-
-    if (res?.data?.message !== "User created successfully!") {
-      showError("register-error", res?.data?.message || "Register failed");
-      return;
-    }
+    // Failures (e.g. email already exists) are thrown by the API layer.
 
     // ✅ Clear register form
     document.getElementById("register-form").reset();
@@ -326,8 +333,6 @@ async function handleRegister(e) {
 
     showToast("Account created! Please sign in.");
   } catch (err) {
-    console.log("FULL ERROR:", err);
-
     showError("register-error", getErrorMessage(err));
   } finally {
     setLoading(btn, false, "Create Account");
@@ -336,6 +341,10 @@ async function handleRegister(e) {
 
 function handleLogout() {
   Auth.logout();
+  passwords = [];
+  selectedEntry = null;
+  document.getElementById("add-form").reset();
+  document.getElementById("edit-form").reset();
   showAuth("login");
   showToast("Signed out.");
 }
@@ -365,7 +374,8 @@ async function loadPasswords() {
 
     renderPasswordList();
   } catch (err) {
-    list.innerHTML = `<div class="empty-state">⚠ Failed to load vault.<br><small>${getErrorMessage(err)}</small></div>`;
+    if (handleSessionExpired(err)) return;
+    list.innerHTML = `<div class="empty-state">⚠ Failed to load vault.<br><small>${escHtml(getErrorMessage(err))}</small></div>`;
   }
 }
 
@@ -414,6 +424,14 @@ function renderPasswordList() {
     )
     .join("");
 
+  // Inline onerror handlers are blocked by the extension CSP, so attach here.
+  list.querySelectorAll("img[data-favicon]").forEach((img) => {
+    img.addEventListener("error", () => {
+      img.style.display = "none";
+      if (img.nextElementSibling) img.nextElementSibling.style.display = "flex";
+    });
+  });
+
   list.querySelectorAll(".pw-item").forEach((item) => {
     item.addEventListener("click", () => {
       const id = item.dataset.id;
@@ -438,14 +456,11 @@ async function handleAddPassword(e) {
   };
 
   try {
-    const res = await Passwords.create(data);
-    console.log(res, "Res");
-
+    await Passwords.create(data);
     showToast("Password saved!");
     showVault();
   } catch (err) {
-    console.log(err, "er");
-
+    if (handleSessionExpired(err)) return;
     showError("add-error", getErrorMessage(err));
   } finally {
     setLoading(btn, false, "Save Password");
@@ -471,11 +486,15 @@ async function handleEditPassword(e) {
     await Passwords.update(selectedEntry.id, data);
     showToast("Password updated!");
     // Update local state
+    // Keep the plaintext password out of the in-memory list / selection.
+    const { password: _newPassword, ...publicData } = data;
     const idx = passwords.findIndex((p) => p.id === selectedEntry.id);
-    if (idx !== -1) passwords[idx] = { ...selectedEntry, ...data };
-    selectedEntry = { ...selectedEntry, ...data };
+    if (idx !== -1) passwords[idx] = { ...passwords[idx], ...publicData };
+    selectedEntry = { ...selectedEntry, ...publicData };
+    delete selectedEntry.password;
     showDetail(selectedEntry);
   } catch (err) {
+    if (handleSessionExpired(err)) return;
     showError("edit-error", getErrorMessage(err));
   } finally {
     setLoading(btn, false, "Update Password");
@@ -494,6 +513,7 @@ async function handleDeletePassword() {
     showToast("Deleted.");
     showVault();
   } catch (err) {
+    if (handleSessionExpired(err)) return;
     showToast("Failed to delete: " + getErrorMessage(err), true);
   }
 }
@@ -510,6 +530,10 @@ async function handleAutofill() {
     const fullEntry = res.data.data;
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]?.id) {
+        showToast("No active tab to autofill.", true);
+        return;
+      }
       chrome.tabs.sendMessage(
         tabs[0].id,
         {
@@ -520,6 +544,7 @@ async function handleAutofill() {
           },
         },
         (res) => {
+          void chrome.runtime.lastError; // page without the content script
           showToast(
             res?.success
               ? "Autofilled!"
@@ -530,6 +555,7 @@ async function handleAutofill() {
       );
     });
   } catch (err) {
+    if (handleSessionExpired(err)) return;
     showToast("Failed to autofill (password not fetched)", true);
   }
 }
@@ -537,6 +563,16 @@ async function handleAutofill() {
 /* ─────────────────────────────────────────────
    UTILS
 ───────────────────────────────────────────── */
+/** If the API reported an expired session, return to the login screen. */
+function handleSessionExpired(err) {
+  if (err?.code !== "SESSION_EXPIRED") return false;
+  passwords = [];
+  selectedEntry = null;
+  showAuth("login");
+  showToast("Session expired. Please sign in again.", true);
+  return true;
+}
+
 function generatePassword(fieldId) {
   const chars =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}";
@@ -570,22 +606,40 @@ function getFavicon(url, appName) {
   if (url) {
     try {
       const domain = new URL(url).hostname;
-      return `<img src="https://www.google.com/s2/favicons?domain=${domain}&sz=32" onerror="this.style.display='none';this.nextSibling.style.display='flex'" /><span style="display:none">${(appName || "?")[0].toUpperCase()}</span>`;
+      return `<img data-favicon src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32" alt="" /><span style="display:none">${escHtml(initialOf(appName))}</span>`;
     } catch {}
   }
-  return `<span>${(appName || "?")[0].toUpperCase()}</span>`;
+  return `<span>${escHtml(initialOf(appName))}</span>`;
+}
+
+function initialOf(appName) {
+  return (appName || "?").trim().charAt(0).toUpperCase() || "?";
 }
 
 function escHtml(str) {
   return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Returns an http(s) URL for a saved site ("example.com" -> "https://example.com"), or "" if unsafe. */
+function toSafeUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.href
+      : "";
+  } catch {
+    return "";
+  }
 }
 
 function getErrorMessage(err) {
   const res = err?.response?.data;
-  console.log(err, "res");
 
   if (res?.message === "Validation Failed" && typeof res?.data === "object") {
     return Object.values(res.data).join("\n");
